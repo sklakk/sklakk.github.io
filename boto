@@ -1,0 +1,70 @@
+import boto3
+from datetime import datetime, timedelta
+import os
+from concurrent.futures import ThreadPoolExecutor
+
+# Constants: configure according to your requirements
+BUCKET_NAME = 'your-bucket-name'
+START_DATE = '2023-01-01'  # Format: YYYY-MM-DD
+END_DATE = '2023-01-31'    # Format: YYYY-MM-DD
+OUTPUT_DIR = 'output'  # Directory where the results will be saved
+MAX_WORKERS = 5  # Number of threads
+
+def save_to_file(date_str, files):
+    """Save the object information into a file for a specific day."""
+    if not os.path.exists(OUTPUT_DIR):
+        os.makedirs(OUTPUT_DIR)
+
+    file_path = os.path.join(OUTPUT_DIR, f'files_{date_str}.txt')
+    with open(file_path, 'w') as f:
+        for file_info in files:
+            f.write(f"{file_info[0]}, Last Modified: {file_info[1]}\n")
+
+def process_objects(objects_data, start_date, end_date):
+    """Process the paginated objects and save them into separate files."""
+    # Create a dictionary to hold the objects for each date
+    files_by_date = {}
+
+    for content in objects_data.get('Contents', []):
+        # Check if the object's last modified date is within the range
+        if start_date <= content['LastModified'] <= end_date:
+            date_str = content['LastModified'].strftime('%Y-%m-%d')
+            if date_str not in files_by_date:
+                files_by_date[date_str] = []
+            files_by_date[date_str].append((content['Key'], content['LastModified']))
+
+    # Save results to files (one file per day)
+    for date_str, files in files_by_date.items():
+        save_to_file(date_str, files)
+
+def list_files(s3, bucket_name, start_date, end_date):
+    """List files in the specified S3 bucket within the date range with pagination."""
+    # Convert string dates to datetime objects
+    start_date = datetime.strptime(start_date, '%Y-%m-%d')
+    end_date = datetime.strptime(end_date, '%Y-%m-%d')
+    end_date += timedelta(days=1)  # Ensure end date is inclusive
+
+    # Initialize pagination
+    paginator = s3.get_paginator('list_objects_v2')
+    page_iterator = paginator.paginate(Bucket=bucket_name)
+
+    # Process the object listings in parallel
+    with ThreadPoolExecutor(max_workers=MAX_WORKERS) as executor:
+        futures = []
+        for page in page_iterator:
+            # Each page is handled in a separate thread
+            futures.append(executor.submit(process_objects, page, start_date, end_date))
+
+        # Wait for all threads to complete
+        for future in futures:
+            future.result()
+
+def main():
+    # Initialize boto3 client
+    s3 = boto3.client('s3')
+
+    # List files in the specified date range
+    list_files(s3, BUCKET_NAME, START_DATE, END_DATE)
+
+if __name__ == "__main__":
+    main()
