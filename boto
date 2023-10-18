@@ -9,6 +9,7 @@ START_DATE = '2023-01-01'  # Format: YYYY-MM-DD
 END_DATE = '2023-01-31'    # Format: YYYY-MM-DD
 OUTPUT_DIR = 'output'  # Directory where the results will be saved
 MAX_WORKERS = 5  # Number of threads
+FILENAME_TEXT = 'specific-text'  # Text to search for in the filenames
 
 def save_to_file(date_str, files):
     """Save the object information into a file for a specific day."""
@@ -26,12 +27,14 @@ def process_objects(objects_data, start_date, end_date):
     files_by_date = {}
 
     for content in objects_data.get('Contents', []):
-        # Check if the object's last modified date is within the range
-        if start_date <= content['LastModified'] <= end_date:
-            date_str = content['LastModified'].strftime('%Y-%m-%d')
-            if date_str not in files_by_date:
-                files_by_date[date_str] = []
-            files_by_date[date_str].append((content['Key'], content['LastModified']))
+        # Check if the object's key contains the specific text
+        if FILENAME_TEXT in content['Key']:
+            # Check if the object's last modified date is within the range
+            if start_date <= content['LastModified'] <= end_date:
+                date_str = content['LastModified'].strftime('%Y-%m-%d')
+                if date_str not in files_by_date:
+                    files_by_date[date_str] = []
+                files_by_date[date_str].append((content['Key'], content['LastModified']))
 
     # Save results to files (one file per day)
     for date_str, files in files_by_date.items():
